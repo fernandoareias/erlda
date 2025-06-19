@@ -1,0 +1,9 @@
+{application, poc,
+ [
+  {description, "POC Application"},
+  {vsn, "0.1.0"},
+  {modules, [poc_app, file_stage, get_stage, http_server, stage_behaviour, stage_controller]},
+  {registered, []},
+  {mod, {poc_app, []}},
+  {applications, [kernel, stdlib]}
+ ]}. 
