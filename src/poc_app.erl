@@ -4,8 +4,7 @@
 
 -export([start/2, stop/1]).
 
-start(_Type, _Args) ->
-    % file_stage:start_link(),
+start(_Type, _Args) -> 
     get_stage:start_link(),
     http_parser_stage:start_link(),
     http_server:start(),

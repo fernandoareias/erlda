@@ -52,7 +52,7 @@ write_response(Connection, Status, ContentType, Body) ->
         "Connection: close", ?CRLF,
         ?CRLF
     ],
-    io:format("[*][~p][~p] - Connection ~p | Status response ~p ~n", [calendar:local_time(), self(), Connection, Status]),
+    io:format("[+][~p][~p] - Connection ~p | Status response ~p ~n", [calendar:local_time(), self(), Connection, Status]),
     Response = list_to_binary([Headers, BinaryBody]),
     case gen_tcp:send(Connection, Response) of
         ok ->
@@ -60,9 +60,6 @@ write_response(Connection, Status, ContentType, Body) ->
         {error, Reason} ->
             io:format("[-][~p][~p] - Failed to send response: ~p~n", [calendar:local_time(), self(), Reason])
     end,
-    % gen_server:cast(metrics, {close_connection}),
-    % io:format("[+][~p][~p] - Send message connection_closed to process: ~p ~n", [calendar:local_time(), self()]),
-    % AcceptorPid ! {connection_closed, Connection},
     gen_tcp:close(Connection),
     io:format("[+][~p][~p] - Connection closed~n", [calendar:local_time(), self()]).
 

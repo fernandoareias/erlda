@@ -8,7 +8,7 @@ start() ->
 
     case gen_tcp:listen(?PORT, [{active, true}, binary]) of 
         {ok, ListenSocket} -> 
-            io:format("[-][~p][~p] - Web server accepts messages now! ~n", [calendar:local_time(), self()]),
+            io:format("[+][~p][~p] - Web server accepts messages now! ~n", [calendar:local_time(), self()]),
             loop(ListenSocket);
         {error, eaddrinuse} -> 
             io:format("[-][~p][~p] - Error port already in use ~n", [calendar:local_time(), self()]),
@@ -24,7 +24,6 @@ loop(ListenSocket) ->
 
     receive
         {tcp, AcceptSocket, Data} ->
-
             http_parser_stage ! {command, {parse_request, Data, AcceptSocket}, {tcp, AcceptSocket}}, 
             loop(ListenSocket);
         {tcp_closed, AcceptSocket} ->
