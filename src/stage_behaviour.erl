@@ -3,8 +3,7 @@
 -export([
     spawn_stage/1,
     loop/2,
-    start_workers/3,
-    select_worker/1
+    start_workers/3
 ]).
 
 -record(private_state, {
@@ -44,7 +43,7 @@ loop(StageModule, State = #private_state{ processors = [] }) ->
             },
             loop(StageModule, NewState);
         {command, _, _} ->
-            io:format("[/][~p][~p] - Aguardando workers ficarem prontos... ~n", [calendar:local_time(), self()]),
+            io:format("[/][~p][~p] - Aguardando workers ficarem prontas... ~n", [calendar:local_time(), self()]),
             loop(StageModule, State);
         stop ->
             io:format("[-][~p][~p] - Estágio parado. ~n", [calendar:local_time(), self()])
@@ -114,17 +113,6 @@ worker_loop(StageModule, StagePid) ->
                     NextStagePid ! {command, NewCommand, From}
             end,
             worker_loop(StageModule, StagePid)
-    end.
-
-
-select_worker(Workers) ->
-    N = length(Workers),
-    case N of
-        0 ->
-            erlang:error(no_workers);
-        _ ->
-            Index = rand:uniform(N),
-            lists:nth(Index, Workers)
     end.
 
 pick_random_worker(Workers) ->
