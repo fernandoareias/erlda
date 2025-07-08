@@ -13,12 +13,10 @@
 }).
 
 spawn_controller(StageModule, StagePid) ->
-    io:format("[+][~p][~p] - Controller -> Stage ~p | Pid ~p ~n", [calendar:local_time(), self(), StageModule, StagePid]),
     State = #controller_state{stage_module = StageModule, stage_pid = StagePid},
     Pid = spawn(?MODULE, loop, [State]),
     ControllerName = list_to_atom(atom_to_list(StageModule) ++ "_controler"),
     register(ControllerName, Pid),
-    io:format("[+][~p][~p] - Controller registrado como ~p~n", [calendar:local_time(), self(), ControllerName]),
     Pid.
 
 loop(State = #controller_state{check_interval = Interval}) ->
@@ -45,7 +43,7 @@ check_stage_balance(State) ->
     case is_process_alive(StagePid) of
         true ->
             {message_queue_len, QLen} = process_info(StagePid, message_queue_len),
-            NumWorkers = count_active_workers(StagePid),
+            NumWorkers = stage_behaviour:count_workers(StageModule),
             
             io:format("[C][~p][~p] - Analisando métricas: QLen=~p, Workers=~p, Up=~p, Down=~p~n", 
                       [calendar:local_time(), self(), QLen, NumWorkers, Up, Down]),
@@ -53,10 +51,11 @@ check_stage_balance(State) ->
             if
                 QLen > Up andalso NumWorkers < Max ->
                     io:format("[^][~p][~p] - Aumento workers para ~p. QLen: ~p, Workers: ~p~n", [calendar:local_time(), self(), StageModule, QLen, NumWorkers]),
-                    StagePid ! {add_worker, 1};
+                    stage_behaviour:add_worker(StageModule, self());
+                
                 QLen < Down andalso NumWorkers > Min ->
                     io:format("[v][~p][~p] - Diminuindo workers para ~p. QLen: ~p, Workers: ~p~n", [calendar:local_time(), self(), StageModule, QLen, NumWorkers]),
-                    StagePid ! {remove_worker, 1};
+                    stage_behaviour:remove_worker(StageModule, any);
                 true ->
                     io:format("[=][~p][~p] - Workers estáveis para ~p. QLen: ~p, Workers: ~p~n", [calendar:local_time(), self(), StageModule, QLen, NumWorkers])
             end;
@@ -64,16 +63,4 @@ check_stage_balance(State) ->
             io:format("[-][~p][~p] - Stage ~p não está mais vivo~n", [calendar:local_time(), self(), StageModule])
     end,
     State.
-
-count_active_workers(StagePid) ->
-    case process_info(StagePid, monitors) of
-        {monitors, Monitors} ->
-            lists:foldl(fun({process, Pid}, Count) ->
-                case is_process_alive(Pid) of
-                    true -> Count + 1;
-                    false -> Count
-                end
-            end, 0, Monitors);
-        _ ->
-            0
-    end.
+ 

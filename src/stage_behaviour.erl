@@ -3,120 +3,104 @@
 -export([
     spawn_stage/1,
     loop/2,
-    start_workers/3
+    add_worker/1,
+    remove_worker/2,
+    wait_message/1,
+    count_workers/1
 ]).
 
--record(private_state, {
-    processors = [] :: list(pid()),
-    controller :: pid()
-}).
+-define(is_false(X), ((X) == false)).
 
 -callback handle_command(Command :: term()) ->
     {ok, Result :: term()} | {error, Reason :: term()} |
     {forward, NextStagePid :: pid(), NewCommand :: term()}.
 
--callback rebalancing_policy(State :: #private_state{}) ->
+-callback rebalancing_policy() ->
     ok | {error, term()}.
 
--optional_callbacks([rebalancing_policy/1]).
+-optional_callbacks([rebalancing_policy/0]).
 
 spawn_stage(StageModule) when is_atom(StageModule) ->
-    InitialState = #private_state{
-        processors = []
-    },
-    Pid = spawn_link(?MODULE, loop, [StageModule, InitialState]),
-    ControllerPid = stage_controller:spawn_controller(StageModule, Pid),
-    Pid ! {set_controller, ControllerPid},
+    EtsTable = list_to_atom(atom_to_list(StageModule) ++ "_workers"),
+    ets:new(EtsTable, [named_table, public, {write_concurrency, true}]),    
+    Pid = spawn_link(?MODULE, loop, [StageModule, false]),
     register(StageModule, Pid),
+    ControllerPid = stage_controller:spawn_controller(StageModule, Pid),
+    link(ControllerPid), 
     Pid.
 
-loop(StageModule, State = #private_state{ processors = [] }) ->
-    receive
-        {set_controller, ControllerPid} ->
-            link(ControllerPid),
-            io:format("[+][~p][~p] - Controller configurado: ~p~n", [calendar:local_time(), self(), ControllerPid]),
-            MinWorkers = 1,
-            Workers = start_workers(StageModule, MinWorkers, self()),
-            NewState = State#private_state{
-                processors = Workers,
-                controller = ControllerPid
-            },
-            loop(StageModule, NewState);
-        {command, _, _} ->
-            io:format("[/][~p][~p] - Aguardando workers ficarem prontas... ~n", [calendar:local_time(), self()]),
-            loop(StageModule, State);
-        stop ->
-            io:format("[-][~p][~p] - Estágio parado. ~n", [calendar:local_time(), self()])
-    end;
-loop(StageModule, State = #private_state{ processors = _Workers }) ->
-    receive 
-        {add_worker, N} ->
-            NewWorkers = [spawn_worker(StageModule, self()) || _ <- lists:seq(1, N)],
-            io:format("[+][~p][~p] - Adicionando ~p workers para ~p~n", [calendar:local_time(), self(), N, StageModule]),
-            NewState = State#private_state{
-                processors = NewWorkers ++ State#private_state.processors
-            },
-            loop(StageModule, NewState);
-        {remove_worker, N} when N > 0 ->
-            {ToRemove, Remaining} = lists:split(min(N, length(State#private_state.processors)), State#private_state.processors),
-            io:format("[-][~p][~p] - Removendo ~p workers de ~p~n", [calendar:local_time(), self(), length(ToRemove), StageModule]),
-            lists:foreach(fun({WorkerPid, _MonitorRef}) ->
-                exit(WorkerPid, kill)
-            end, ToRemove),
-            NewState = State#private_state{
-                processors = Remaining
-            },
-            loop(StageModule, NewState);
+loop(StageModule, HasWorkers) when ?is_false(HasWorkers) ->
+    WorkerPids = start_workers(StageModule, 10),
+    EtsTable = list_to_atom(atom_to_list(StageModule) ++ "_workers"),
+    ets:insert(EtsTable, {workers, WorkerPids}),
+    loop(StageModule, true);
+loop(StageModule, _)  ->
+    receive  
         {command, Command, From} ->
-            io:format("[+][~p][~p] - ~p recebeu comando de ~p ~n", [calendar:local_time(), self(), StageModule, From]),
-            {WorkerPid, _MonitorRef} = pick_random_worker(State#private_state.processors),
-            io:format("[+][~p][~p] - ~p recebeu comando de ~p enviando para a worker ~p ~n", [calendar:local_time(), self(), StageModule, From, WorkerPid]),
+            [{workers, WorkersList}] = ets:lookup(list_to_atom(atom_to_list(StageModule) ++ "_workers"), workers),
+            WorkerPid = pick_random_worker(WorkersList),
             WorkerPid ! {work, Command, From},
-            loop(StageModule, State);
+            loop(StageModule, true);
         {worker_ready, _WorkerPid} ->
-            loop(StageModule, State);
-        {'DOWN', _Ref, process, WorkerPid, Reason} ->
-            io:format("[-][~p][~p] - Worker ~p morreu (~p), reiniciando...~n", [calendar:local_time(), self(), WorkerPid, Reason]),
-            Workers1 = lists:keydelete(WorkerPid, 1, State#private_state.processors),
-            {NewWorkerPid, NewRef} = spawn_worker(StageModule, self()),
-            Workers2 = [{NewWorkerPid, NewRef} | Workers1],
-            NewState = State#private_state{processors = Workers2},
-            loop(StageModule, NewState);
+            loop(StageModule, true);
+        {'DOWN', _Ref, process, WorkerPid, _} ->
+            remove_worker(StageModule, WorkerPid),
+            loop(StageModule, true);
         stop ->
-            io:format("[-][~p][~p] - Estágio parado.~n", [calendar:local_time(), self()])
+            erlang:hibernate(StageModule, wait_message, [StageModule])
     end.
 
-
-start_workers(StageModule, Count, StagePid) when Count > 0 ->
-    [spawn_worker(StageModule, StagePid) || _ <- lists:seq(1, Count)].
-
-spawn_worker(StageModule, StagePid) ->
-    Id = erlang:unique_integer([positive]),
-    Name = list_to_atom(atom_to_list(StageModule) ++ "_worker_" ++ integer_to_list(Id)),
-    WorkerPid = spawn(fun() ->
-        register(Name, self()),
-        worker_loop(StageModule, StagePid)
-    end),
-    MonitorRef = erlang:monitor(process, WorkerPid),
-    {WorkerPid, MonitorRef}.
-
-worker_loop(StageModule, StagePid) ->
-    StagePid ! {worker_ready, self()},
+wait_message(StageModule) ->
     receive
-        {work, Command, From} ->
-            case StageModule:handle_command(Command) of
-                {ok, Result} ->
-                    io:format("[+][~p][~p] - Sucesso processando o comando ~p | resultado ~p ~n", [calendar:local_time(), self(), Command, Result]);
-                {error, Reason} ->
-                    io:format("[-][~p][~p] - Erro motivo ~p ~n", [calendar:local_time(), self(), Reason]);
-                {forward, NextStagePid, NewCommand} ->
-                    NextStagePid ! {command, NewCommand, From}
-            end,
-            worker_loop(StageModule, StagePid)
+        stop ->
+            io:format("[-][~p][~p] - Estágio parado.~n", [calendar:local_time(), self()]);
+        Msg ->
+            io:format("Recebido: ~p~n", [Msg]),
+            loop(StageModule, true)
     end.
+
+start_workers(StageModule, Count) when Count > 0 ->
+    [spawn_worker(StageModule) || _ <- lists:seq(1, Count)].
+
+spawn_worker(StageModule) ->
+    worker:spawn_worker(StageModule).
+ 
 
 pick_random_worker(Workers) ->
-    Tuple = list_to_tuple(Workers),
-    N = tuple_size(Tuple),
+    N = length(Workers),
     Index = rand:uniform(N),
-    element(Index, Tuple).
+    lists:nth(Index, Workers).
+
+
+add_worker(StageModule) ->
+    EtsTable = list_to_atom(atom_to_list(StageModule) ++ "_workers"),
+    [{workers, CurrentWorkers}] = ets:lookup(EtsTable, workers),
+    WorkerPid = spawn_worker(StageModule),
+    NewWorkers = [WorkerPid | CurrentWorkers],
+    ets:insert(EtsTable, {workers, NewWorkers}).
+
+remove_worker(StageModule, WorkerPid) when is_pid(WorkerPid) ->
+    EtsTable = list_to_atom(atom_to_list(StageModule) ++ "_workers"),
+    [{workers, CurrentWorkers}] = ets:lookup(EtsTable, workers),
+    NewWorkers = lists:filter(fun(Pid) -> Pid /= WorkerPid end, CurrentWorkers),
+    ets:insert(EtsTable, {workers, NewWorkers}),
+    exit(WorkerPid, shutdown);
+remove_worker(StageModule, _) ->
+    EtsTable = list_to_atom(atom_to_list(StageModule) ++ "_workers"),
+    [{workers, CurrentWorkers}] = ets:lookup(EtsTable, workers),
+    MinWorkers = 1, 
+    case length(CurrentWorkers) > MinWorkers of 
+        true ->
+            [RemovedWorker | NewWorkers] = lists:reverse(CurrentWorkers),
+            exit(RemovedWorker, shutdown), 
+            ets:insert(EtsTable, {workers, NewWorkers});
+        false ->
+            io:format("Não é possível remover mais workers. Mínimo atingido.~n")
+    end.
+
+count_workers(StageModule) ->
+    EtsTable = list_to_atom(atom_to_list(StageModule) ++ "_workers"),
+    case ets:lookup(EtsTable, workers) of
+        [{workers, Workers}] -> length(Workers);
+        [] -> 0
+    end.
