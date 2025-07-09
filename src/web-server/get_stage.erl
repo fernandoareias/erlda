@@ -12,10 +12,8 @@ start_link() ->
     stage_behaviour:spawn_stage(?MODULE).
 
 handle_command({Path, Connection}) ->
-    io:format("[+][~p][~p] - Tentando obter o arquivo ~p | Connection ~p ~n", [calendar:local_time(), self(), Path, Connection]),
     case read_file(Path) of 
         {ok, Content} ->
-            io:format("[+][~p][~p] - Encontrou o arquivo ~n", [calendar:local_time(), self()]),
             write_response(Connection, "200 OK", "text/html", Content),
             {ok, sent};
         {error, _} -> 
@@ -52,16 +50,14 @@ write_response(Connection, Status, ContentType, Body) ->
         "Connection: close", ?CRLF,
         ?CRLF
     ],
-    io:format("[+][~p][~p] - Connection ~p | Status response ~p ~n", [calendar:local_time(), self(), Connection, Status]),
     Response = list_to_binary([Headers, BinaryBody]),
     case gen_tcp:send(Connection, Response) of
         ok ->
-            io:format("[+][~p][~p] - Response sent successfully~n", [calendar:local_time(), self()]);
+            ok;
         {error, Reason} ->
             io:format("[-][~p][~p] - Failed to send response: ~p~n", [calendar:local_time(), self(), Reason])
     end,
-    gen_tcp:close(Connection),
-    io:format("[+][~p][~p] - Connection closed~n", [calendar:local_time(), self()]).
+    gen_tcp:close(Connection).
 
 
 day_of_week(Y, M, D) ->
