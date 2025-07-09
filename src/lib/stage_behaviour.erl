@@ -21,23 +21,24 @@
 -optional_callbacks([rebalancing_policy/0]).
 
 spawn_stage(StageModule) when is_atom(StageModule) ->
-    EtsTable = list_to_atom(atom_to_list(StageModule) ++ "_workers"),
-    ets:new(EtsTable, [named_table, public, {write_concurrency, true}]),    
+    ensure_workers_table(),
     Pid = spawn_link(?MODULE, loop, [StageModule, false]),
     register(StageModule, Pid),
     ControllerPid = stage_controller:spawn_controller(StageModule, Pid),
     link(ControllerPid), 
     Pid.
 
+
 loop(StageModule, HasWorkers) when ?is_false(HasWorkers) ->
     WorkerPids = start_workers(StageModule, 10),
-    EtsTable = list_to_atom(atom_to_list(StageModule) ++ "_workers"),
-    ets:insert(EtsTable, {workers, WorkerPids}),
+    StageKey = list_to_atom(atom_to_list(StageModule) ++ "_workers"),
+    ets:insert(erlda_workers_table, {StageKey, WorkerPids}),
     loop(StageModule, true);
 loop(StageModule, _)  ->
     receive  
         {command, Command, From} ->
-            [{workers, WorkersList}] = ets:lookup(list_to_atom(atom_to_list(StageModule) ++ "_workers"), workers),
+            StageKey = list_to_atom(atom_to_list(StageModule) ++ "_workers"),
+            [{StageKey, WorkersList}] = ets:lookup(erlda_workers_table, StageKey),
             WorkerPid = pick_random_worker(WorkersList),
             WorkerPid ! {work, Command, From},
             loop(StageModule, true);
@@ -50,6 +51,14 @@ loop(StageModule, _)  ->
             erlang:hibernate(StageModule, wait_message, [StageModule])
     end.
 
+
+ensure_workers_table() ->
+    case ets:info(erlda_workers_table) of
+        undefined ->
+            ets:new(erlda_workers_table, [set, public, named_table, {write_concurrency, true}]);
+        _ -> ok
+    end.
+    
 wait_message(StageModule) ->
     receive
         stop ->
@@ -72,34 +81,34 @@ pick_random_worker(Workers) ->
 
 
 add_worker(StageModule) ->
-    EtsTable = list_to_atom(atom_to_list(StageModule) ++ "_workers"),
-    [{workers, CurrentWorkers}] = ets:lookup(EtsTable, workers),
+    StageKey = list_to_atom(atom_to_list(StageModule) ++ "_workers"),
+    [{StageKey, CurrentWorkers}] = ets:lookup(erlda_workers_table, StageKey),
     WorkerPid = spawn_worker(StageModule),
     NewWorkers = [WorkerPid | CurrentWorkers],
-    ets:insert(EtsTable, {workers, NewWorkers}).
+    ets:insert(erlda_workers_table, {StageKey, NewWorkers}).
 
 remove_worker(StageModule, WorkerPid) when is_pid(WorkerPid) ->
-    EtsTable = list_to_atom(atom_to_list(StageModule) ++ "_workers"),
-    [{workers, CurrentWorkers}] = ets:lookup(EtsTable, workers),
+    StageKey = list_to_atom(atom_to_list(StageModule) ++ "_workers"),
+    [{StageKey, CurrentWorkers}] = ets:lookup(erlda_workers_table, StageKey),
     NewWorkers = lists:filter(fun(Pid) -> Pid /= WorkerPid end, CurrentWorkers),
-    ets:insert(EtsTable, {workers, NewWorkers}),
+    ets:insert(erlda_workers_table, {StageKey, NewWorkers}),
     exit(WorkerPid, shutdown);
 remove_worker(StageModule, _) ->
-    EtsTable = list_to_atom(atom_to_list(StageModule) ++ "_workers"),
-    [{workers, CurrentWorkers}] = ets:lookup(EtsTable, workers),
+    StageKey = list_to_atom(atom_to_list(StageModule) ++ "_workers"),
+    [{StageKey, CurrentWorkers}] = ets:lookup(erlda_workers_table, StageKey),
     MinWorkers = 1, 
     case length(CurrentWorkers) > MinWorkers of 
         true ->
             [RemovedWorker | NewWorkers] = lists:reverse(CurrentWorkers),
             exit(RemovedWorker, shutdown), 
-            ets:insert(EtsTable, {workers, NewWorkers});
+            ets:insert(erlda_workers_table, {StageKey, NewWorkers});
         false ->
             io:format("[+][~p][~p] - Não é possível remover mais workers. Mínimo atingido ~n", [calendar:local_time(), self()])
     end.
 
 count_workers(StageModule) ->
-    EtsTable = list_to_atom(atom_to_list(StageModule) ++ "_workers"),
-    case ets:lookup(EtsTable, workers) of
-        [{workers, Workers}] -> length(Workers);
+    StageKey = list_to_atom(atom_to_list(StageModule) ++ "_workers"),
+    case ets:lookup(erlda_workers_table, StageKey) of
+        [{StageKey, Workers}] -> length(Workers);
         [] -> 0
     end.
