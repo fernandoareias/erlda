@@ -25,8 +25,8 @@ spawn_stage(StageModule) when is_atom(StageModule) ->
     ets:new(EtsTable, [named_table, public, {write_concurrency, true}]),    
     Pid = spawn_link(?MODULE, loop, [StageModule, false]),
     register(StageModule, Pid),
-    ControllerPid = stage_controller:spawn_controller(StageModule, Pid),
-    link(ControllerPid), 
+    % ControllerPid = stage_controller:spawn_controller(StageModule, Pid),
+    % link(ControllerPid), 
     Pid.
 
 loop(StageModule, HasWorkers) when ?is_false(HasWorkers) ->
@@ -37,6 +37,7 @@ loop(StageModule, HasWorkers) when ?is_false(HasWorkers) ->
 loop(StageModule, _)  ->
     receive  
         {command, Command, From} ->
+            io:format("Recebeu o comand, enviando para ~p o comando ~p from ~p~n", [StageModule, Command, From]),
             [{workers, WorkersList}] = ets:lookup(list_to_atom(atom_to_list(StageModule) ++ "_workers"), workers),
             WorkerPid = pick_random_worker(WorkersList),
             WorkerPid ! {work, Command, From},
@@ -48,6 +49,13 @@ loop(StageModule, _)  ->
             loop(StageModule, true);
         stop ->
             erlang:hibernate(StageModule, wait_message, [StageModule])
+    after 0 ->
+        {message_queue_len, QLen} = process_info(self(), message_queue_len),
+        if QLen > 0 ->
+            io:format("DEBUG: QLen=~p mas não há mensagens no receive~n", [QLen]);
+        true -> ok
+        end,
+        loop(StageModule, true)
     end.
 
 wait_message(StageModule) ->
@@ -99,8 +107,16 @@ remove_worker(StageModule, _) ->
     end.
 
 count_workers(StageModule) ->
-    EtsTable = list_to_atom(atom_to_list(StageModule) ++ "_workers"),
-    case ets:lookup(EtsTable, workers) of
-        [{workers, Workers}] -> length(Workers);
-        [] -> 0
+    try
+        EtsTable = list_to_atom(atom_to_list(StageModule) ++ "_workers"),
+        [{workers, WorkersList}] = ets:lookup(EtsTable, workers),
+        lists:foldl(fun(WorkerPid, Count) ->
+            case is_process_alive(WorkerPid) of
+                true -> Count + 1;
+                false -> Count
+            end
+        end, 0, WorkersList)
+    catch
+        _:_ -> 0
     end.
+    

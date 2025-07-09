@@ -42,7 +42,7 @@ check_stage_balance(State) ->
     
     case is_process_alive(StagePid) of
         true ->
-            {message_queue_len, QLen} = process_info(StagePid, message_queue_len),
+            {message_queue_len, QLen} = process_info(whereis(StageModule), message_queue_len),
             NumWorkers = stage_behaviour:count_workers(StageModule),
             
             io:format("[C][~p][~p] - Analisando métricas: QLen=~p, Workers=~p, Up=~p, Down=~p~n", 

@@ -2,7 +2,7 @@
  [
   {description, "POC Application"},
   {vsn, "0.1.0"},
-  {modules, [poc_app]},
+  {modules, [poc_app, get_stage, http_parser_stage, http_server, http_server_acceptor, stage_behaviour, stage_controller, worker]},
   {registered, []},
   {mod, {poc_app, []}},
   {applications, [kernel, stdlib]}

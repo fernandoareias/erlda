@@ -11,18 +11,16 @@
 start_link() ->
     stage_behaviour:spawn_stage(?MODULE).
 
-handle_command({Path, Connection}) ->
+handle_command({Path, Socket, AcceptorPid}) ->
     case read_file(Path) of 
         {ok, Content} ->
-            write_response(Connection, "200 OK", "text/html", Content),
+            write_response(AcceptorPid, Socket, "200 OK", "text/html", Content),
             {ok, sent};
         {error, _} -> 
-            write_response(Connection, "404 Not Found", "text/html", not_found_response()),
-            io:format("[-][~p][~p] - Não encontrou o arquivo ~n", [calendar:local_time(), self()]),
+            write_response(AcceptorPid, Socket, "404 Not Found", "text/html", not_found_response()),
+            % io:format("[-][~p][~p] - Não encontrou o arquivo ~n", [calendar:local_time(), self()]),
             {error, "Não encontrou o arquivo"}
     end.
-
-
 
 read_file(Path) -> 
     case file:read_file("./www" ++ binary_to_list(Path)) of
@@ -35,7 +33,7 @@ read_file(Path) ->
 not_found_response() ->
     <<"<html><head><title>Not Found</title></head><body>Not Found</body></html>">>.
 
-write_response(Connection, Status, ContentType, Body) ->
+write_response(Connection, Socket, Status, ContentType, Body) ->
     {{Year, Month, Day}, {Hour, Minute, Second}} = erlang:universaltime(),
     Date = io_lib:format("~s, ~2..0w ~s ~4..0w ~2..0w:~2..0w:~2..0w GMT",
                             [day_of_week(Year, Month, Day), Day, month(Month), Year, Hour, Minute, Second]),
@@ -50,15 +48,9 @@ write_response(Connection, Status, ContentType, Body) ->
         "Connection: close", ?CRLF,
         ?CRLF
     ],
-    % io:format("[+][~p][~p] - Connection ~p | Status response ~p ~n", [calendar:local_time(), self(), Connection, Status]),
+    io:format("Enviando resposta para ~p ~n", [Connection]),
     Response = list_to_binary([Headers, BinaryBody]),
-    case gen_tcp:send(Connection, Response) of
-        ok ->
-            ok;
-        {error, Reason} ->
-            io:format("[-][~p][~p] - Failed to send response: ~p~n", [calendar:local_time(), self(), Reason])
-    end,
-    gen_tcp:close(Connection).
+    Connection ! {tcp_response, Socket, Response}.
 
 
 day_of_week(Y, M, D) ->

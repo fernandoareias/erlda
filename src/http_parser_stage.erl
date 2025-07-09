@@ -12,16 +12,18 @@
 start_link() ->
     stage_behaviour:spawn_stage(?MODULE).
 
-handle_command({parse_request, Data, Connection}) ->
-    case process_request(Data, Connection) of 
-        {get_stage, Path, Connection} ->
+handle_command({parse_request, Data, Socket, AcceptorPid}) ->
+    io:format("Recebeu comando no parser ~n"),
+    case process_request(Data, AcceptorPid) of 
+        {get_stage, Path, AcceptorPid} ->
             case whereis(get_stage) of
                 undefined -> 
-                    gen_tcp:send(Connection, "HTTP/1.1 404 Not Found\r\n\r\n"),
-                    gen_tcp:close(Connection),
+                    io:format("Não encontrou o estagio get ~n"),
+                    % gen_tcp:send(Connection, "HTTP/1.1 404 Not Found\r\n\r\n"),
+                    % gen_tcp:close(Connection),
                     {error, no_get_stage};
                 Pid ->
-                    {forward, Pid, {Path, Connection}}
+                    {forward, Pid, {Path, Socket, AcceptorPid}}
             end;
         {error, Reason} ->
             {error, Reason}  
@@ -32,18 +34,19 @@ handle_command({parse_request, Data, Connection}) ->
 %% Funções privadas
 %%%===================================================================
 
-process_request(Data, Connection) when is_binary(Data), is_port(Connection) ->
+process_request(Data, Connection) when is_binary(Data), is_pid(Connection) ->
     try
         {Method, Path, _} = parse_request(Data),
         Authenticated = true,
         route_request(Method, Path, Authenticated, Data, Connection) 
     catch
         error:Reason ->
-            gen_tcp:close(Connection),
+            io:format("Erro ~n"),
+            % gen_tcp:close(Connection),
             {error, Reason}
     end;
 process_request(_InvalidData, _InvalidConnection) ->
-    io:format("[!][~p][~p] - Invalid data or connection in process_request~n", [calendar:local_time(), self()]).
+    io:format("[!][~p][~p] - Invalid data or connection in process_request~n ~p ~p", [calendar:local_time(), self(), _InvalidData, _InvalidConnection]).
 
 route_request(<<"GET">>, Path, _, _, Connection) ->
     {get_stage, Path, Connection}.
