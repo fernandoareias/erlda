@@ -15,14 +15,7 @@ start_link() ->
 handle_command({parse_request, Data, Connection}) ->
     case process_request(Data, Connection) of 
         {get_stage, Path, Connection} ->
-            case whereis(get_stage) of
-                undefined -> 
-                    gen_tcp:send(Connection, "HTTP/1.1 404 Not Found\r\n\r\n"),
-                    gen_tcp:close(Connection),
-                    {error, no_get_stage};
-                Pid ->
-                    {forward, Pid, {Path, Connection}}
-            end;
+            {forward, get_stage, {Path, Connection}};
         {error, Reason} ->
             {error, Reason}  
     end.
@@ -64,14 +57,12 @@ parse_request(Data) when is_binary(Data) ->
             {error, "/", []}
     end;
 parse_request(_InvalidData) ->
-    % io:format("[-][~p][~p] - Invalid request data~n", [calendar:local_time(), self()]),
     {error, "/", []}.
 
 parse_request_line(RequestLine) ->
     case string:split(RequestLine, " ", all) of
         [Method, Path | _] -> {Method, Path};
         _ -> 
-            % io:format("[-][~p][~p] - Error parsing request line~n", [calendar:local_time(), self()]),
             {error, "/"}
     end.
 
@@ -81,7 +72,6 @@ parse_headers(Lines) ->
             [Key, Value] ->
                 [{binary_to_list(Key), binary_to_list(Value)} | Acc];
             _ ->
-                % io:format("[+][~p][~p] - Ignoring invalid header line: ~p~n", [calendar:local_time(), self(), Line]),
                 Acc
         end
     end, [], Lines).

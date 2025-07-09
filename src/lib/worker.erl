@@ -10,7 +10,6 @@ loop(StageModule) ->
         {work, Command, From} ->
             case StageModule:handle_command(Command) of
                 {ok, _} ->
-                    % io:format("[+][~p][~p] - Sucesso processando o comando ~p | resultado ~p ~n", [calendar:local_time(), self(), Command, Result]);
                     ok;
                 {error, Reason} ->
                     io:format("[-][~p][~p] - Erro motivo ~p ~n", [calendar:local_time(), self(), Reason]);

@@ -50,7 +50,6 @@ write_response(Connection, Status, ContentType, Body) ->
         "Connection: close", ?CRLF,
         ?CRLF
     ],
-    % io:format("[+][~p][~p] - Connection ~p | Status response ~p ~n", [calendar:local_time(), self(), Connection, Status]),
     Response = list_to_binary([Headers, BinaryBody]),
     case gen_tcp:send(Connection, Response) of
         ok ->

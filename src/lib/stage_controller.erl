@@ -45,19 +45,19 @@ check_stage_balance(State) ->
             {message_queue_len, QLen} = process_info(StagePid, message_queue_len),
             NumWorkers = stage_behaviour:count_workers(StageModule),
             
-            io:format("[C][~p][~p] - Analisando métricas: QLen=~p, Workers=~p, Up=~p, Down=~p~n", 
+            io:format("[+][~p][~p] - Analisando métricas: QLen=~p, Workers=~p, Up=~p, Down=~p~n", 
                       [calendar:local_time(), self(), QLen, NumWorkers, Up, Down]),
 
             if
                 QLen > Up andalso NumWorkers < Max ->
-                    io:format("[^][~p][~p] - Aumento workers para ~p. QLen: ~p, Workers: ~p~n", [calendar:local_time(), self(), StageModule, QLen, NumWorkers]),
+                    io:format("[+][~p][~p] - Aumento workers para ~p. QLen: ~p, Workers: ~p~n", [calendar:local_time(), self(), StageModule, QLen, NumWorkers]),
                     stage_behaviour:add_worker(StageModule, self());
                 
                 QLen < Down andalso NumWorkers > Min ->
-                    io:format("[v][~p][~p] - Diminuindo workers para ~p. QLen: ~p, Workers: ~p~n", [calendar:local_time(), self(), StageModule, QLen, NumWorkers]),
+                    io:format("[-][~p][~p] - Diminuindo workers para ~p. QLen: ~p, Workers: ~p~n", [calendar:local_time(), self(), StageModule, QLen, NumWorkers]),
                     stage_behaviour:remove_worker(StageModule, any);
                 true ->
-                    io:format("[=][~p][~p] - Workers estáveis para ~p. QLen: ~p, Workers: ~p~n", [calendar:local_time(), self(), StageModule, QLen, NumWorkers])
+                    io:format("[+][~p][~p] - Workers estáveis para ~p. QLen: ~p, Workers: ~p~n", [calendar:local_time(), self(), StageModule, QLen, NumWorkers])
             end;
         false ->
             io:format("[-][~p][~p] - Stage ~p não está mais vivo~n", [calendar:local_time(), self(), StageModule])

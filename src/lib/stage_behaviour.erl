@@ -54,8 +54,8 @@ wait_message(StageModule) ->
     receive
         stop ->
             io:format("[-][~p][~p] - Estágio parado.~n", [calendar:local_time(), self()]);
-        Msg ->
-            io:format("Recebido: ~p~n", [Msg]),
+        _ ->
+            io:format("[+][~p][~p] - Estágio saindo da hibernação ~n", [calendar:local_time(), self()]),
             loop(StageModule, true)
     end.
 
@@ -64,7 +64,6 @@ start_workers(StageModule, Count) when Count > 0 ->
 
 spawn_worker(StageModule) ->
     worker:spawn_worker(StageModule).
- 
 
 pick_random_worker(Workers) ->
     N = length(Workers),
@@ -95,7 +94,7 @@ remove_worker(StageModule, _) ->
             exit(RemovedWorker, shutdown), 
             ets:insert(EtsTable, {workers, NewWorkers});
         false ->
-            io:format("Não é possível remover mais workers. Mínimo atingido.~n")
+            io:format("[+][~p][~p] - Não é possível remover mais workers. Mínimo atingido ~n", [calendar:local_time(), self()])
     end.
 
 count_workers(StageModule) ->

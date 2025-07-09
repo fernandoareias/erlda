@@ -6,9 +6,10 @@
 start() ->
     case gen_tcp:listen(?PORT, [{active, true}, binary]) of 
         {ok, ListenSocket} -> 
+            io:format("[+][~p][~p] - Iniciando servidor na porta ~p ~n", [calendar:local_time(), self(), ?PORT]),
             loop(ListenSocket);
         {error, eaddrinuse} -> 
-            io:format("[-][~p][~p] - Error port already in use ~n", [calendar:local_time(), self()]),
+            io:format("[-][~p][~p] - Erro a porta já está sendo utilizada ~n", [calendar:local_time(), self()]),
             error;
         _ ->            
             error
