@@ -13,7 +13,7 @@ Este projeto é uma implementação do padrão SEDA (Staged Event-Driven Archite
 
 1. **Clone o repositório:**
    ```sh
-   git clone <url-git>
+   git clone git@github.com:fernandoareias/erlda.git
    cd erlda
    ```
 2. **Compile o projeto:**
