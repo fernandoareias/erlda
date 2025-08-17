@@ -1,32 +1,64 @@
 -module(http_server).
--export([start/0]).
+-behaviour(ranch_protocol).
+-export([start/0, start_link/3, start_link/4]).
 
 -define(PORT, 8080).
 
 start() ->
-    case gen_tcp:listen(?PORT, [{active, true}, binary]) of 
-        {ok, ListenSocket} -> 
-            io:format("[+][~p][~p] - Iniciando servidor na porta ~p ~n", [calendar:local_time(), self(), ?PORT]),
-            loop(ListenSocket);
-        {error, eaddrinuse} -> 
-            io:format("[-][~p][~p] - Erro a porta já está sendo utilizada ~n", [calendar:local_time(), self()]),
-            error;
-        _ ->            
-            error
+    io:format("[-][~p][~p] - Iniciando servidor na porta: ~p ~n", [calendar:local_time(), self(), ?PORT]),
+    {ok, _} = ranch:start_listener(http_server,
+        ranch_tcp,
+        #{num_acceptors => 100,
+          socket_opts => [
+              {port, ?PORT},
+              {backlog, 1024},
+              {nodelay, true},
+              {reuseaddr, true},
+              {keepalive, true},
+              {linger, {true, 0}},
+              {recbuf, 262144},
+              {sndbuf, 262144}
+          ]},
+        ?MODULE,
+        []).
+
+start_link(Ref, Socket, Transport, _Opts) ->
+    Pid = spawn_link(fun() -> init(Ref, Socket, Transport) end),
+    {ok, Pid}.
+
+start_link(Ref, Transport, _Opts) ->
+    Pid = spawn_link(fun() -> init_handshake(Ref, Transport) end),
+    {ok, Pid}.
+
+init(Ref, Socket, Transport) ->
+    ok = ranch:accept_ack(Ref),
+    case Transport:recv(Socket, 0, 15000) of
+        {ok, Data} ->
+            http_server_http_parser_stage ! {command, {parse_request, Data, Socket}, self()},
+            wait_stage_and_exit();
+        {error, _Reason} ->
+            Transport:close(Socket),
+            exit(normal)
     end.
 
-loop(ListenSocket) ->
-    {ok, AcceptSocket} = gen_tcp:accept(ListenSocket),
+init_handshake(Ref, Transport) ->
+    {ok, Socket} = ranch:handshake(Ref),
+    case Transport:recv(Socket, 0, 15000) of
+        {ok, Data} ->
+            http_server_http_parser_stage ! {command, {parse_request, Data, Socket}, self()},
+            wait_stage_and_exit();
+        {error, _Reason} ->
+            Transport:close(Socket),
+            exit(normal)
+    end.
 
+wait_stage_and_exit() ->
     receive
-        {tcp, AcceptSocket, Data} ->
-            http_parser_stage ! {command, {parse_request, Data, AcceptSocket}, {tcp, AcceptSocket}}, 
-            loop(ListenSocket);
-        {tcp_closed, AcceptSocket} ->
-            loop(ListenSocket);
-        {tcp_error, AcceptSocket, Reason} ->
-            io:format("[-][~p][~p] - Conexão erro: ~p ~n", [calendar:local_time(), self(), Reason]),
-            loop(ListenSocket)
-    end.
+        {stage_result, _} -> ok;
+        {stage_error, _} -> ok
+    after 5000 -> ok
+    end,
+    exit(normal).
 
+ 
  
