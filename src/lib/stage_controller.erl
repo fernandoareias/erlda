@@ -20,7 +20,7 @@
 spawn_controller(StageModule, StagePid) ->
     State = #controller_state{stage_module = StageModule, stage_pid = StagePid},
     Pid = spawn(?MODULE, loop, [State]),
-    ControllerName = list_to_atom(atom_to_list(StageModule) ++ "_controler"),
+    ControllerName = list_to_atom(atom_to_list(StageModule) ++ "_controller"),
     register(ControllerName, Pid),
     Pid.
 

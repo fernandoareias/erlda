@@ -40,7 +40,7 @@ init_handshake(Ref, Transport) ->
 handle_connection(Socket, Transport) ->
     case Transport:recv(Socket, 0, 15000) of
         {ok, Data} ->
-            http_server_http_parser_stage ! {command, {parse_request, Data, Socket}, self()},
+            http_server_parser_stage ! {command, {parse_request, Data, Socket}, self()},
             wait_stage_and_continue(Socket, Transport);
         {error, _Reason} ->
             Transport:close(Socket),

@@ -79,7 +79,7 @@ start_workers(StageModule, Count) when Count > 0 ->
     [spawn_worker(StageModule) || _ <- lists:seq(1, Count)].
 
 spawn_worker(StageModule) ->
-    worker:spawn_worker(StageModule).
+    stage_worker:spawn_worker(StageModule).
 
 pick_random_worker(Workers) ->
     N = length(Workers),

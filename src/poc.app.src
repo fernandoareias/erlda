@@ -6,9 +6,9 @@
       poc_app,
       stage_behaviour,
       stage_controller,
-      worker,
+      stage_worker,
       http_server,
-      http_server_http_parser_stage,
+      http_server_parser_stage,
       http_server_cache_stage,
       http_server_get_stage,
       http_server_response_writer_stage

@@ -1,4 +1,4 @@
--module(http_server_http_parser_stage).
+-module(http_server_parser_stage).
 
 -behaviour(stage_behaviour).
 

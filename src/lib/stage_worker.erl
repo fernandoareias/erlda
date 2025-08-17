@@ -1,4 +1,4 @@
--module(worker).
+-module(stage_worker).
 
 -export([spawn_worker/1, loop/1]).
 
@@ -20,3 +20,5 @@ loop(StageModule) ->
             end,
             loop(StageModule)
     end.
+
+
