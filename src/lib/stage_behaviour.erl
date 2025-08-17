@@ -11,6 +11,9 @@
 
 -define(is_false(X), ((X) == false)).
 
+-define(BACKPRESSURE_THRESHOLD, 50).
+-define(BACKPRESSURE_ATTEMPTS, 5).
+
 -callback handle_command(Command :: term()) ->
     {ok, Result :: term()} | {error, Reason :: term()} |
     {forward, NextStagePid :: pid(), NewCommand :: term()}.
@@ -30,7 +33,7 @@ spawn_stage(StageModule) when is_atom(StageModule) ->
 
 
 loop(StageModule, HasWorkers) when ?is_false(HasWorkers) ->
-    WorkerPids = start_workers(StageModule, 10),
+    WorkerPids = start_workers(StageModule, 100),
     StageKey = list_to_atom(atom_to_list(StageModule) ++ "_workers"),
     ets:insert(erlda_workers_table, {StageKey, WorkerPids}),
     loop(StageModule, true);
@@ -39,8 +42,12 @@ loop(StageModule, _)  ->
         {command, Command, From} ->
             StageKey = list_to_atom(atom_to_list(StageModule) ++ "_workers"),
             [{StageKey, WorkersList}] = ets:lookup(erlda_workers_table, StageKey),
-            WorkerPid = pick_random_worker(WorkersList),
-            WorkerPid ! {work, Command, From},
+            case pick_worker_under_threshold(WorkersList, ?BACKPRESSURE_THRESHOLD, ?BACKPRESSURE_ATTEMPTS) of
+                {ok, WorkerPid} ->
+                    WorkerPid ! {work, Command, From};
+                busy ->
+                    From ! {stage_error, busy}
+            end,
             loop(StageModule, true);
         {worker_ready, _WorkerPid} ->
             loop(StageModule, true);
@@ -78,6 +85,23 @@ pick_random_worker(Workers) ->
     N = length(Workers),
     Index = rand:uniform(N),
     lists:nth(Index, Workers).
+
+pick_worker_under_threshold(_Workers, _Threshold, Attempts) when Attempts =< 0 ->
+    busy;
+pick_worker_under_threshold([], _Threshold, _Attempts) ->
+    busy;
+pick_worker_under_threshold(Workers, Threshold, Attempts) ->
+    WorkerPid = pick_random_worker(Workers),
+    case queue_len(WorkerPid) < Threshold of
+        true -> {ok, WorkerPid};
+        false -> pick_worker_under_threshold(Workers, Threshold, Attempts - 1)
+    end.
+
+queue_len(Pid) when is_pid(Pid) ->
+    case process_info(Pid, message_queue_len) of
+        {message_queue_len, N} -> N;
+        _ -> 0
+    end.
 
 
 add_worker(StageModule) ->
