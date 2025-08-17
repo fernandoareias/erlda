@@ -12,8 +12,7 @@ start() ->
           socket_opts => [
               {port, ?PORT},
               {backlog, 1024},
-              {nodelay, true},
-              {reuseaddr, true},
+              {nodelay, true},            
               {keepalive, true},
               {linger, {true, 0}},
               {recbuf, 262144},
@@ -32,33 +31,29 @@ start_link(Ref, Transport, _Opts) ->
 
 init(Ref, Socket, Transport) ->
     ok = ranch:accept_ack(Ref),
-    case Transport:recv(Socket, 0, 15000) of
-        {ok, Data} ->
-            http_server_http_parser_stage ! {command, {parse_request, Data, Socket}, self()},
-            wait_stage_and_exit();
-        {error, _Reason} ->
-            Transport:close(Socket),
-            exit(normal)
-    end.
+    handle_connection(Socket, Transport).
 
 init_handshake(Ref, Transport) ->
     {ok, Socket} = ranch:handshake(Ref),
+    handle_connection(Socket, Transport).
+
+handle_connection(Socket, Transport) ->
     case Transport:recv(Socket, 0, 15000) of
         {ok, Data} ->
             http_server_http_parser_stage ! {command, {parse_request, Data, Socket}, self()},
-            wait_stage_and_exit();
+            wait_stage_and_continue(Socket, Transport);
         {error, _Reason} ->
             Transport:close(Socket),
             exit(normal)
     end.
 
-wait_stage_and_exit() ->
+wait_stage_and_continue(Socket, Transport) ->
     receive
         {stage_result, _} -> ok;
         {stage_error, _} -> ok
-    after 5000 -> ok
+    after 15000 -> ok
     end,
-    exit(normal).
+    handle_connection(Socket, Transport).
 
  
  
