@@ -33,7 +33,7 @@ spawn_stage(StageModule) when is_atom(StageModule) ->
 
 
 loop(StageModule, HasWorkers) when ?is_false(HasWorkers) ->
-    WorkerPids = start_workers(StageModule, 100),
+    WorkerPids = start_workers(StageModule, 10),
     StageKey = list_to_atom(atom_to_list(StageModule) ++ "_workers"),
     ets:insert(erlda_workers_table, {StageKey, WorkerPids}),
     loop(StageModule, true);
