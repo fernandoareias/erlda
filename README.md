@@ -13,7 +13,7 @@ Este projeto é uma implementação do padrão SEDA (Staged Event-Driven Archite
 
 1. **Clone o repositório:**
    ```sh
-   git clone <url-git>
+   git clone git@github.com:fernandoareias/erlda.git
    cd erlda
    ```
 2. **Compile o projeto:**
@@ -32,7 +32,7 @@ A pasta `src/lib` contém módulos fundamentais para a implementação do padrã
 
 - **stage_behaviour.erl**: Define o behaviour (contrato) para os estágios do SEDA, padronizando a interface e o ciclo de vida dos estágios. Permite que diferentes estágios implementem suas próprias lógicas seguindo uma estrutura comum.
 - **stage_controller.erl**: Responsável por gerenciar o pool de workers de cada estágio, incluindo a criação, remoção e balanceamento dinâmico dos processos conforme a demanda do sistema.
-- **worker.erl**: Implementa a lógica básica de um worker, que executa as tarefas atribuídas pelo estágio. Os workers são os responsáveis pelo processamento concorrente das requisições em cada estágio.
+- **stage_worker.erl**: Implementa a lógica básica de um worker, que executa as tarefas atribuídas pelo estágio. Os workers são os responsáveis pelo processamento concorrente das requisições em cada estágio.
 
 Esses módulos são reutilizáveis e servem como base para a construção dos estágios específicos do pipeline de processamento.
 
@@ -44,11 +44,21 @@ Como exemplo prático de aplicação do padrão SEDA, este projeto inclui um ser
 
 O servidor web é dividido em estágios independentes, cada um com múltiplos workers, promovendo concorrência, isolamento e escalabilidade. O fluxo de processamento de uma requisição HTTP é o seguinte:
 
-1. **http_server**: Aceita conexões TCP e repassa os dados recebidos para o próximo estágio.
-2. **http_parser_stage**: Realiza o parsing da requisição HTTP e encaminha para o estágio responsável pelo recurso solicitado.
-3. **get_stage**: Lê arquivos do diretório `www/` e responde ao cliente com o conteúdo solicitado ou retorna um erro 404 caso o arquivo não exista.
+1. **http_server**: Aceita conexões TCP usando Ranch e repassa os dados recebidos para o próximo estágio.
+2. **http_server_parser_stage**: Realiza o parsing da requisição HTTP, extrai o método e caminho, e encaminha para o estágio de cache.
+3. **http_server_cache_stage**: Verifica primeiro se o arquivo solicitado está em cache. Se encontrado, retorna diretamente; caso contrário, encaminha para o estágio de leitura de arquivos.
+4. **http_server_get_stage**: Lê arquivos do diretório `www/` quando não estão em cache e retorna o conteúdo ou erro 404.
+5. **http_server_response_writer_stage**: Formata e envia a resposta HTTP de volta ao cliente, incluindo cabeçalhos apropriados.
 
 Cada estágio utiliza o behaviour definido em `stage_behaviour.erl` e é gerenciado pelo `stage_controller.erl`, que controla o pool de workers responsáveis pelo processamento concorrente das requisições.
+
+### Características do Servidor Web
+
+- **Cache Inteligente**: O `cache_stage` implementa um sistema de cache em memória usando ETS (Erlang Term Storage) para melhorar a performance ao servir arquivos frequentemente acessados.
+- **Parsing Robusto**: O `parser_stage` realiza parsing completo de requisições HTTP, incluindo método, caminho e cabeçalhos.
+- **Respostas HTTP Completas**: O `response_writer_stage` gera respostas HTTP válidas com cabeçalhos apropriados, incluindo data, content-type e content-length.
+- **Segurança**: Implementa sanitização de caminhos para prevenir ataques de directory traversal.
+- **Escalabilidade**: Usa Ranch para gerenciamento eficiente de conexões TCP com pool de acceptors configurável.
 
 <img src="docs/image.svg" alt="Fluxo dos Estágios SEDA" width="600"/>
 
