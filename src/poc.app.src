@@ -2,8 +2,18 @@
  [
   {description, "POC Application"},
   {vsn, "0.1.0"},
-  {modules, [poc_app]},
+  {modules, [
+      poc_app,
+      stage_behaviour,
+      stage_controller,
+      stage_worker,
+      http_server,
+      http_server_parser_stage,
+      http_server_cache_stage,
+      http_server_get_stage,
+      http_server_response_writer_stage
+  ]},
   {registered, []},
   {mod, {poc_app, []}},
-  {applications, [kernel, stdlib]}
+  {applications, [kernel, stdlib, ranch]}
  ]}. 
